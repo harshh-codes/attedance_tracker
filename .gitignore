@@ -20,6 +20,10 @@ backend/logs/
 *.log
 npm-debug.log*
 
+# Test / Sensitive scripts
+backend/test_passwords.js
+backend/test_passwrds.js
+
 # OS & IDE
 .DS_Store
 Thumbs.db
