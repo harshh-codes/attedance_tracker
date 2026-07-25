@@ -1,0 +1,192 @@
+// Landmark Developers - Employee Attendance Tracking System Database Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum Role {
+  ADMIN
+  EMPLOYEE
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+}
+
+enum AccountStatus {
+  PENDING_EMAIL_VERIFICATION
+  PENDING_ADMIN_APPROVAL
+  APPROVED
+  REJECTED
+}
+
+// ==========================================
+// MODELS
+// ==========================================
+
+/// User model representing employees and system administrators
+model User {
+  id                     String        @id @default(uuid())
+  employeeId             String?       @unique
+  firstName              String
+  lastName               String
+  email                  String        @unique
+  password               String
+  phone                  String?
+  emergencyContact       String?
+  address                String?
+  designation            String
+  department             String?
+  branchId               String?
+  branch                 OfficeLocation? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  role                   Role          @default(EMPLOYEE)
+  accountStatus          AccountStatus @default(PENDING_EMAIL_VERIFICATION)
+  isEmailVerified        Boolean       @default(false)
+  emailVerificationToken String?
+  passwordResetToken     String?
+  passwordResetExpires   DateTime?
+  rejectionReason        String?
+  isActive               Boolean       @default(false)
+  isDeleted              Boolean       @default(false)
+  profilePhoto           String?
+  failedLoginAttempts    Int           @default(0)
+  lockoutUntil           DateTime?
+  lastLogin              DateTime?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  // Relationships
+  attendances  Attendance[]
+  auditLogs    AuditLog[]
+  sessions     UserSession[]
+
+  // Indexes for fast lookup
+  @@index([email])
+  @@index([employeeId])
+  @@index([role])
+  @@index([isDeleted])
+  @@index([accountStatus])
+  @@index([passwordResetToken])
+  @@map("users")
+}
+
+/// UserSession model tracking active refresh tokens & device sessions
+model UserSession {
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokenHash String   @unique
+  ipAddress        String?
+  deviceInfo       String?
+  status           String   @default("ACTIVE") // ACTIVE, REVOKED, EXPIRED
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId])
+  @@index([refreshTokenHash])
+  @@map("user_sessions")
+}
+
+/// LoginHistory model recording every authentication attempt & failure reasons
+model LoginHistory {
+  id            String   @id @default(uuid())
+  email         String
+  ipAddress     String?
+  deviceInfo    String?
+  success       Boolean
+  failureReason String?
+  createdAt     DateTime @default(now())
+
+  @@index([email])
+  @@index([createdAt])
+  @@map("login_history")
+}
+
+/// Attendance model tracking daily employee punch-ins and geofence verification
+model Attendance {
+  id                 String           @id @default(uuid())
+  userId             String
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attendanceDate     DateTime         @db.Date
+  punchInTime        DateTime
+  latitude           Float
+  longitude          Float
+  distanceFromOffice Float
+  isLocationVerified Boolean          @default(false)
+  status             AttendanceStatus
+  deviceInfo         String?
+  ipAddress          String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@index([attendanceDate])
+  @@index([userId])
+  @@index([userId, attendanceDate])
+  @@map("attendances")
+}
+
+/// OfficeLocation model configuring geofencing coordinates & allowed radius
+model OfficeLocation {
+  id            String   @id @default(uuid())
+  officeName    String
+  latitude      Float
+  longitude     Float
+  allowedRadius Float
+  address       String
+  workingHours  String?  @default("09:00 AM - 06:00 PM")
+  timezone      String?  @default("Asia/Kolkata")
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relationships
+  users         User[]
+
+  @@map("office_locations")
+}
+
+/// CompanySettings model managing company branding & default system parameters
+model CompanySettings {
+  id               String   @id @default(uuid())
+  companyName      String   @default("Landmark Developers")
+  companyLogo      String?
+  companyEmail     String   @default("contact@landmarkdevelopers.com")
+  companyPhone     String?  @default("+91-11-23456789")
+  website          String?  @default("https://landmarkdevelopers.com")
+  supportEmail     String?  @default("support@landmarkdevelopers.com")
+  timezone         String   @default("Asia/Kolkata")
+  defaultStartTime String   @default("09:00 AM")
+  defaultEndTime   String   @default("06:00 PM")
+  companyAddress   String?  @default("Landmark Towers, Barakhamba Road, Connaught Place, New Delhi, 110001")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("company_settings")
+}
+
+/// AuditLog model recording critical system activities & audit trails
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action      String
+  description String
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@map("audit_logs")
+}
